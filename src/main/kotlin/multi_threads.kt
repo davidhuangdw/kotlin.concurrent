@@ -11,8 +11,17 @@ val LOCKED = 1
 
 interface Lock {
     fun tryLock(): Boolean
-    fun lock()
     fun unlock()
+}
+
+fun Lock.lock(){ while(!tryLock()); }
+fun Lock.withLock(blk: () -> Any?): Any? {
+    try {
+        lock()
+        return blk()
+    } finally {
+        unlock()
+    }
 }
 
 open class AtomInt(@Volatile var atomInt: Int = 0) {
@@ -47,17 +56,7 @@ open class AtomInt(@Volatile var atomInt: Int = 0) {
 
 open class SpinLock : AtomInt(UNLOCKED), Lock {
     override fun tryLock() = cas(UNLOCKED, LOCKED)
-    override fun lock() { while (!tryLock()); }
     override fun unlock() { set(UNLOCKED) }
-
-    fun withLock(blk: () -> Any?): Any? {
-        try {
-            lock()
-            return blk()
-        } finally {
-            unlock()
-        }
-    }
 }
 
 class TicketSpinLock {
@@ -85,7 +84,7 @@ class ReentrantSpinLock: Lock{
     var owner: Thread? = null
     val count = AtomInt()
 
-    override fun lock() { while(!tryLock()); }
+//    override fun lock() { while(!tryLock()); }
 
     // owner != null => count > 0, count==0 => owner == null
     override fun tryLock(): Boolean {
@@ -118,29 +117,29 @@ class ConcurrentDeque<T> {
     fun size() = innerQue.size
 }
 
-class Cond {
-    private val waitList = ConcurrentDeque<Thread>()
-
-    fun size() = waitList.size()
-
-    fun await() {
-        waitList.add(Thread.currentThread())
-        // error: potentially wait forever!!
-        //  e.g. the order: 1. enqueue and not park yet 2. poll and unpark 3. park forever because unpark has done
-        // problem: impossible to use LockSupport.park directly with my own SpinLock
-        // seems impossible without ReentrantLock#newCondition:
-        //     because we cannot fetch the binding mutex of an Object or currentThread to park
-        LockSupport.park(this)
-    }
-
-    fun signal() {
-        val first = waitList.poll()
-        if (first != null)
-            LockSupport.unpark(first)
-    }
-
-    fun signalAll() = waitList.pollAll { LockSupport.unpark(it) }
-}
+//class Cond {
+//    private val waitList = ConcurrentDeque<Thread>()
+//
+//    fun size() = waitList.size()
+//
+//    fun await() {
+//        waitList.add(Thread.currentThread())
+//        // error: potentially wait forever!!
+//        //  e.g. the order: 1. enqueue and not park yet 2. poll and unpark 3. park forever because unpark has done
+//        // problem: impossible to use LockSupport.park directly with my own SpinLock
+//        // seems impossible without ReentrantLock#newCondition:
+//        //     because seems unable to fetch the binding mutex of an Object or currentThread
+//        LockSupport.park(this)
+//    }
+//
+//    fun signal() {
+//        val first = waitList.poll()
+//        if (first != null)
+//            LockSupport.unpark(first)
+//    }
+//
+//    fun signalAll() = waitList.pollAll { LockSupport.unpark(it) }
+//}
 
 open class BlockingLock {
     val lock = ReentrantLock()
@@ -476,6 +475,7 @@ class MultiThreadsTests{
             if((id/10)%2 == 1){
                 rwLock.read_acquire()
                 println("read:$id: (${rwLock.nread}, ${rwLock.nwrite}) ---" + "-".repeat(id))
+                Thread.sleep(100)
                 rwLock.read_release()
             }else{
                 rwLock.write_acquire()
