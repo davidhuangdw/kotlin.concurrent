@@ -48,6 +48,8 @@ class Semaphore(val slots: Int){
     }
 }
 
+// warning: Semaphore is enough to limit concurrency and the pool is unnecessary,
+//      because unlike os-thread coroutine has no cost of OS resource
 class CoroutinesPool(val size: Int){
     companion object {
         val singleThreadDispatcher = SingleThreadDispatcher()
@@ -87,6 +89,52 @@ class CoroutinesPool(val size: Int){
     suspend fun join() = joinCond.awaitUntil { done == size }
 }
 
+class FairReadWriteSemaphore{   // for NIO multiple reads and single write
+    var readCount = 0
+    private val waitingList = LinkedList<Pair<Boolean, Continuation<Unit>>>() //
+
+    suspend fun read_acquire(){
+        if(readCount >= 0 && waitingList.isEmpty())
+            readCount ++
+        else
+            await(true)
+    }
+    fun read_release(){
+        readCount --
+        if(readCount == 0) signal()
+    }
+
+    suspend fun write_acquire(){
+        if(readCount == 0 && waitingList.isEmpty())
+            readCount --
+        else
+            await(false)
+    }
+    fun write_release(){
+        readCount ++
+        if(readCount == 0) signal()
+    }
+
+    private suspend fun await(isRead: Boolean) = suspendCoroutine<Unit> { waitingList.add(isRead to it) }
+    private fun signal(){
+        if(waitingList.isEmpty()) return
+        val (isRead, cont) = waitingList.poll()
+        readCount += if(isRead) 1 else -1
+        if(!isRead) return cont.resume(Unit)
+
+        val readers = mutableListOf(cont)
+        while(waitingList.isNotEmpty()){
+            val (isRead, cont) = waitingList.peek()
+            if(!isRead) break
+            waitingList.poll()
+            readCount ++
+            readers.add(cont)
+        }
+        readers.forEach{ it.resume(Unit) }
+    }
+
+}
+
 
 class PrimitivesTests{
     val dispatcher = SingleThreadDispatcher()
@@ -95,14 +143,15 @@ class PrimitivesTests{
     @Test
     fun testSemaphore() = runBlocking {
         val sema = Semaphore(3)
-        repeat(50){ id -> scope.launch{
-                sema.acquire()
-                println("acquire:$id: ---" + "-".repeat(id))
-                delay(200L)
-                println("release:$id: ===" + "=".repeat(id))
-                sema.release()
+        (0 until 50).map{ id -> scope.launch{
+            sema.acquire()
+            println("acquire:$id: ---" + "-".repeat(id))
+            delay(200L)
+            println("release:$id: ===" + "=".repeat(id))
+            sema.release()
 
-        } }
+        } }.forEach{ it.join() }
+        println("complete testSemaphore")
     }
 
     @Test
@@ -123,7 +172,26 @@ class PrimitivesTests{
         }
 
         pool.join()
-        println("complete all")
+        println("complete testCoroutinesPool")
+    }
+
+    @Test
+    fun testFairReadWriteSemaphore() = runBlocking {
+        val sema = FairReadWriteSemaphore()
+        (0 until 50).map{id -> scope.launch {         // single-thread
+            if((id/8)%2 == 0){
+                sema.read_acquire()
+                println("read $id: ${sema.readCount} -" + "-".repeat(id))
+                delay(100L)
+                sema.read_release()
+            }else{
+                sema.write_acquire()
+                println("write $id: ${sema.readCount} =" + "=".repeat(id))
+                delay(100L)
+                sema.write_release()
+            }
+        } }.forEach{ it.join() }
+        println("complete testFairReadWriteSemaphore")
     }
 
 }
