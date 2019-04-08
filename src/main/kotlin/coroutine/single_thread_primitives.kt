@@ -48,7 +48,7 @@ class Semaphore(val slots: Int){
     }
 }
 
-// warning: Semaphore is enough to limit concurrency and the pool is unnecessary,
+// warning: The pool is unnecessary and Semaphore is enough to limit the number of concurrent usage of a resource,
 //      because unlike os-thread coroutine has no cost of OS resource
 class CoroutinesPool(val size: Int){
     companion object {

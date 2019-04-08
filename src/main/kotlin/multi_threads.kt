@@ -6,8 +6,8 @@ import java.util.concurrent.locks.LockSupport
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-val UNLOCKED = 0
-val LOCKED = 1
+const val UNLOCKED = 0
+const val LOCKED = 1
 
 interface Lock {
     fun tryLock(): Boolean
