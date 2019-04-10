@@ -1,8 +1,9 @@
+package multi_threads
+
 import org.junit.Test
 import sun.misc.Unsafe
 import java.util.*
 import java.util.concurrent.Callable
-import java.util.concurrent.locks.LockSupport
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -36,7 +37,8 @@ open class AtomInt(@Volatile var atomInt: Int = 0) {
         val atomIntOffset = unsafe.objectFieldOffset(AtomInt::class.java.getDeclaredField("atomInt"))
     }
 
-    fun cas(expect: Int, setValue: Int) = unsafe.compareAndSwapInt(this, atomIntOffset, expect, setValue)
+    fun cas(expect: Int, setValue: Int) = unsafe.compareAndSwapInt(this,
+        atomIntOffset, expect, setValue)
 
     fun add(delta: Int): Int {
         var v = atomInt
@@ -79,12 +81,10 @@ class TicketSpinLock {
     }
 }
 
-class ReentrantSpinLock: Lock{
+class ReentrantSpinLock: Lock {
     @Volatile
     var owner: Thread? = null
     val count = AtomInt()
-
-//    override fun lock() { while(!tryLock()); }
 
     // owner != null => count > 0, count==0 => owner == null
     override fun tryLock(): Boolean {
@@ -505,19 +505,19 @@ class MultiThreadsTests{
     @Test
     fun testFutTask(){
         val pool = ThreadPool(2)
-        val fa = FutTask<Int>(Callable{
+        val fa = FutTask<Int>(Callable {
             println("fa start---")
             Thread.sleep(3000)
             println("fa done---")
             100
         })
-        val fb = FutTask<Int>(Callable{
+        val fb = FutTask<Int>(Callable {
             println("fb start---")
             Thread.sleep(3000)
             println("fb done---")
             200
         })
-        val fsum = FutTask<Int>(Callable{
+        val fsum = FutTask<Int>(Callable {
             val sum = fa.get() + fb.get()
             println("fsum done---")
             sum

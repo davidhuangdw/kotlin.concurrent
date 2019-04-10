@@ -70,25 +70,25 @@ class TcpPubSub {
         val serverChannel = AsynchronousServerSocketChannel.open().bind(InetSocketAddress(9999))
 
         sema.acquire()
-        serverChannel.accept<Unit>(null, simpleHandler{ ch, _, self ->
+        serverChannel.accept<Unit>(null, simpleHandler { ch, _, self ->
             println("---accept ${ch.remoteAddress}")
             launch {
                 sema.acquire()
                 serverChannel.accept(null, self)
             }
             launch {
-                try{
+                try {
                     ch.writeStr(MANUAL)
                     val buffer = ByteBuffer.allocate(BUFFER_SIZE)
 
                     var done = false
-                    while(!done){
+                    while (!done) {
                         val readSize = ch.asyncRead(buffer)
                         if (readSize < 0) break
                         readBuffer(buffer).forEach { done = handleRequest(it, ch) }
                     }
                     println("---${ch.remoteAddress}: done")
-                }finally {
+                } finally {
                     clearSocket(ch)
                     sema.release()
                 }
@@ -111,11 +111,11 @@ class TcpPubSub {
         println("${socket.remoteAddress}: $line")
         val fields = line.split(DELIMITER)
         val cmd = fields[0]
-        when (cmd) {
-            CMD_EXIT -> return true
-            CMD_PUB -> if(fields.size == 3) publish(fields[1], fields[2])
-            CMD_SUB -> if(fields.size == 2) subscribe(fields[1], socket)
-            CMD_UNSUB -> if(fields.size == 2) unsubscribe(fields[1], socket)
+        when {
+            cmd == CMD_EXIT -> return true
+            cmd == CMD_PUB && fields.size == 3 -> publish(fields[1], fields[2])
+            cmd == CMD_SUB && fields.size == 2 -> subscribe(fields[1], socket)
+            cmd == CMD_UNSUB && fields.size == 2 -> unsubscribe(fields[1], socket)
             else -> {
                 val error = "${socket.remoteAddress}:unknown command or wrong format: $line\n"
                 print(error)
