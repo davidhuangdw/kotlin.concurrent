@@ -8,6 +8,7 @@
 2. coroutine primitives:
     * (based on shared mutable state under single-thread)
     * Condition, Semaphore, CoroutinePool, FairReadWriteSemaphore
+    * buffered/unbuffered/unlimited Channel
     
 3. coroutine example: 
     * (single-thread) coroutine TCP pub_sub server

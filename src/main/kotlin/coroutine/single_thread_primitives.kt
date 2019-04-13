@@ -135,6 +135,33 @@ class FairReadWriteSemaphore{   // for NIO multiple reads and single write
 
 }
 
+open class Chan<T>(val bufferSize: Int = Int.MAX_VALUE){
+    private val sendersCompeteSema = Semaphore(bufferSize)
+    private val sendSema = Semaphore(0)
+    private val recvSema = Semaphore(0)
+    private var sents = LinkedList<T>()
+    private val emptyCond = Condition()
+
+    fun size() = sents.size
+
+    suspend fun send(x: T){
+        sendersCompeteSema.acquire()
+        sents.add(x)
+        recvSema.release()
+    }
+
+    suspend fun receive(): T{
+        recvSema.acquire()
+        return sents.poll()!!.also {
+            if(sents.isEmpty()) emptyCond.signal()
+            sendersCompeteSema.release()
+        }
+    }
+
+    suspend fun waitTillEmpty() = emptyCond.awaitUntil { sents.isEmpty() }
+}
+
+class UnbufferedChan<T>: Chan<T>(1)
 
 class PrimitivesTests{
     val dispatcher = SingleThreadDispatcher()
@@ -192,6 +219,28 @@ class PrimitivesTests{
             }
         } }.forEach{ it.join() }
         println("complete testFairReadWriteSemaphore")
+    }
+
+    @Test
+    fun testChan() = runBlocking {
+        listOf(1,3).forEach { bufferSize ->
+            println("=============buffer size $bufferSize==================")
+            val chan = Chan<Int>(bufferSize)
+            scope.launch {
+                while(true){
+                    delay(bufferSize * 500L)
+                    println("===received: ${chan.receive()}")
+                }
+            }
+            scope.launch {
+                (0 until 10).forEach {
+                    delay(it*200L)
+                    chan.send(it)
+                    println("---sent: $it")
+                }
+            }.join()
+            chan.waitTillEmpty()
+        }
     }
 
 }

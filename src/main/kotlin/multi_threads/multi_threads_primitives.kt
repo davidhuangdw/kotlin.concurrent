@@ -106,7 +106,7 @@ class ReentrantSpinLock: Lock {
 
 class ConcurrentDeque<T> {
     private val lock = SpinLock()
-    val innerQue = LinkedList<T>()
+    val innerQue = LinkedList<T>()      // potential error: 'next/prev' is not volatile inside each node
     fun withLock(blk: () -> Any?) = lock.withLock(blk)
     fun add(v: T) = withLock { innerQue.add(v) }
     fun poll() = withLock { if (innerQue.isEmpty()) null else innerQue.poll() } as T?
@@ -178,12 +178,14 @@ class Semaph(slots: Int) {
     }
 
     fun acquire(k: Int = 1) { while(!tryAcquire(k)); }
+    fun release(k: Int = 1) = lock.withLock {
+        count ++
+        cond.signal()
+    }
 
-    fun release(k: Int = 1) {
-        lock.withLock {
-            count += k
-            cond.signalAll()
-        }
+    fun releaseK(k: Int = 1) = lock.withLock {
+        count += k
+        cond.signalAll()
     }
 }
 
