@@ -166,9 +166,9 @@ open class BlockingLock {
 
 class Semaph(slots: Int) {
     @Volatile
-    private var count = slots
-    private var lock = ReentrantLock()
-    private val cond = lock.newCondition()
+    var count = slots
+    var lock = ReentrantLock()
+    val cond = lock.newCondition()
 
     fun tryAcquire(k: Int=1) = lock.withLock {
         (count >= k).also{
@@ -178,7 +178,7 @@ class Semaph(slots: Int) {
     }
 
     fun acquire(k: Int = 1) { while(!tryAcquire(k)); }
-    fun release(k: Int = 1) = lock.withLock {
+    fun release() = lock.withLock {
         count ++
         cond.signal()
     }
