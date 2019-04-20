@@ -136,21 +136,20 @@ class FairReadWriteSemaphore{   // for NIO multiple reads and single write
 }
 
 open class Chan<T>(val bufferSize: Int = Int.MAX_VALUE){
-    private val sendersCompeteSema = Semaphore(bufferSize)
-    private val sendSema = Semaphore(0)
-    private val recvSema = Semaphore(0)
-    private var sents = LinkedList<T>()
-    private val emptyCond = Condition()
+    protected val sendersCompeteSema = Semaphore(bufferSize)
+    protected val recvSema = Semaphore(0)
+    protected var sents = LinkedList<T>()
+    protected val emptyCond = Condition()
 
     fun size() = sents.size
 
-    suspend fun send(x: T){
+    open suspend fun send(x: T){
         sendersCompeteSema.acquire()
         sents.add(x)
         recvSema.release()
     }
 
-    suspend fun receive(): T{
+    open suspend fun receive(): T{
         recvSema.acquire()
         return sents.poll()!!.also {
             if(sents.isEmpty()) emptyCond.signal()
@@ -161,7 +160,25 @@ open class Chan<T>(val bufferSize: Int = Int.MAX_VALUE){
     suspend fun waitTillEmpty() = emptyCond.awaitUntil { sents.isEmpty() }
 }
 
-class UnbufferedChan<T>: Chan<T>(1)
+class UnbufferedChan<T>: Chan<T>(1){
+    private val sendSema = Semaphore(0)
+
+    override suspend fun send(x: T) {
+        sendersCompeteSema.acquire()
+        sents.add(x)
+        recvSema.release()
+        sendSema.acquire()
+        sendersCompeteSema.release()
+    }
+
+    override suspend fun receive(): T {
+        recvSema.acquire()
+        return sents.poll()!!.also {
+            if(sents.isEmpty()) emptyCond.signal()
+            sendSema.release()
+        }
+    }
+}
 
 class PrimitivesTests{
     val dispatcher = SingleThreadDispatcher()
@@ -223,23 +240,25 @@ class PrimitivesTests{
 
     @Test
     fun testChan() = runBlocking {
-        listOf(1,3).forEach { bufferSize ->
-            println("=============buffer size $bufferSize==================")
-            val chan = Chan<Int>(bufferSize)
+        val chans = listOf(1, 3).map{Chan<Int>(it)} + listOf(UnbufferedChan())
+        chans.forEach { chan ->
+            println("============= ${chan.javaClass.name} buffer size ${chan.size()} ==================")
             scope.launch {
                 while(true){
-                    delay(bufferSize * 500L)
+                    delay(1500)
                     println("===received: ${chan.receive()}")
                 }
             }
             scope.launch {
                 (0 until 10).forEach {
+                    println("---send begin: $it")
                     delay(it*200L)
                     chan.send(it)
                     println("---sent: $it")
                 }
             }.join()
             chan.waitTillEmpty()
+            delay(1000)
         }
     }
 
